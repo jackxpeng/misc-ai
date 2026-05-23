@@ -52,3 +52,24 @@ While both are RPC frameworks, they optimize for different goals: **gRPC** for m
 ### The Strategic Trade-off
 - **Use gRPC** for internal microservices where throughput and low latency are the primary metrics.
 - **Use MCP** for building LLM agent control planes. It trades minor parsing overhead for **runtime discovery**, allowing agents to learn and reason about new tools dynamically without needing client-side updates.
+
+## Dynamic Discoverability in Practice
+
+This project is a textbook example of **Dynamic Discoverability**. The client (`mcp_client.py`) has zero hardcoded knowledge of the server's tools—it learns what the data center can do only after it connects.
+
+### The Three-Step Discovery Mechanism
+
+1.  **The Runtime Query**: Instead of using static stubs, the client asks:
+    ```python
+    tools_response = await session.list_tools()
+    ```
+2.  **The Dynamic Context Builder**: It packages the server's response (names, descriptions, and JSON Schemas) into a clean format for the AI.
+3.  **Just-In-Time Prompt Injection**: The client dynamically writes the system prompt at the moment of the request:
+    ```python
+    system_prompt = f"Available Tools: {json.dumps(tools_info)}"
+    ```
+    Gemini reads the `inputSchema`, understands the requirements, and generates the execution payload.
+
+### The "Ultimate Test": Decoupled Deployment
+
+Because of this architecture, you can add a new tool to `mcp_server.py` (e.g., `restart_server`), restart the server, and **the client will immediately know how to use it** without changing a single line of client code. This decoupling is what allows AI agents to scale across complex enterprise APIs.
