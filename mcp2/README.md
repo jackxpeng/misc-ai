@@ -2,6 +2,42 @@
 
 This project demonstrates the Model Context Protocol (MCP) using a FastMCP server and a Gemini-powered client.
 
+## How to Run
+
+### 1. Prerequisites
+- Python 3.10+
+- A Google Gemini API Key
+
+### 2. Setup
+Clone the repository and install dependencies using `uv` or `pip`:
+```bash
+# Using uv (recommended)
+uv sync
+
+# Create a .env file with your API key
+echo "GEMINI_API_KEY=your_key_here" > .env
+```
+
+### 3. Start the MCP Server
+In one terminal, start the FastMCP server on port 8080:
+```bash
+python mcp_server.py
+```
+
+### 4. Run the Client
+In a second terminal, run the client to interact with the server:
+```bash
+python mcp_client.py
+```
+
+### Example Prompts to Try:
+- **Discover Capacity**: `How much room is in rack node-01?`
+- **Standard Deployment**: `Deploy a 2U server to node-01.`
+- **Safety Refusal**: `Deploy a 1U server to node-99.`
+  - *Observation*: Watch the client proactively fetch telemetry for `node-99`, see the `CRITICAL` temperature, and witness the AI refuse the deployment based on the safety mandate.
+
+---
+
 ## The "Two-Pipe" Architecture
 
 In MCP 2.0 over Server-Sent Events (SSE), the transport layer uses a dual-channel system.

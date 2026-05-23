@@ -30,40 +30,79 @@ async def run_agent():
         async with ClientSession(streams[0], streams[1]) as session:
             await session.initialize()
             
-            # --- PHASE 1: DYNAMIC TOOL DISCOVERY ---
+            # --- PHASE 1: DYNAMIC DISCOVERY ---
             # Instead of loading a massive prompt, the agent asks: "What can you do?"
-            print("\n🔍 Discovering available tools...")
+            print("\n🔍 Discovering available tools and resources...")
             tools_response = await session.list_tools()
+            resources_response = await session.list_resources()
             
             tools_info = []
             for tool in tools_response.tools:
                 print(f"   - Found tool: {tool.name}")
-                print(f"     Description: {tool.description}")
                 tools_info.append({
                     "name": tool.name,
                     "description": tool.description,
                     "inputSchema": tool.inputSchema
                 })
             
+            resources_info = []
+            for resource in resources_response.resources:
+                print(f"   - Found resource: {resource.uri} ({resource.name})")
+                resources_info.append({
+                    "uri": resource.uri,
+                    "name": resource.name,
+                    "description": resource.description
+                })
+            
             # --- PHASE 2: EXECUTION ---
             user_prompt = input("\nWhat would you like to do? (e.g., 'Deploy a 2U server named node-99')\n> ")
             if not user_prompt.strip():
                 return
-                
+            
+            # Pre-fetch telemetry if the prompt mentions a potential target node
+            # This demonstrates how the client can proactively gather resource context
+            telemetry_context = ""
+            if "node-" in user_prompt.lower():
+                import re
+                node_match = re.search(r"node-\d+", user_prompt.lower())
+                if node_match:
+                    node_id = node_match.group(0)
+                    print(f"📡 Proactively fetching telemetry for {node_id}...")
+                    resource_uri = f"rack://{node_id}/telemetry"
+                    try:
+                        resource_content = await session.read_resource(resource_uri)
+                        telemetry_context = f"\nCRITICAL CONTEXT - Current Telemetry for {node_id}:\n{resource_content.contents[0].text}"
+                    except Exception as e:
+                        print(f"⚠️ Could not fetch telemetry: {e}")
+
             print("\n🧠 Asking Gemini to pick a tool...")
             
             system_prompt = f"""
             You are an AI assistant that uses tools. Based on the user's request, select the appropriate tool and provide the arguments.
+            
+            COOPERATIVE AGENT GUIDELINES:
+            - Be helpful. If the user's request is clear (e.g., "Deploy a server to node-01") but a specific technical argument like 'server_id' is missing, INFER or GENERATE a reasonable value (e.g., "srv-node-01-001") rather than refusing.
+            - The 'server_id' can be a unique string you generate if not provided.
+            
+            SAFETY MANDATE:
+            - ALWAYS evaluate available telemetry before suggesting a deployment.
+            - If a rack's temperature is (CRITICAL), REFUSE to deploy new hardware and explain why.
+            
             Available Tools:
             {json.dumps(tools_info, indent=2)}
             
+            Available Resource Templates:
+            {json.dumps(resources_info, indent=2)}
+            {telemetry_context}
+            
             User Request: {user_prompt}
             
-            Respond with a JSON object containing EXACTLY two keys:
-            "tool_name": the name of the tool to use (string)
+            Respond with a JSON object containing EXACTLY three keys:
+            "tool_name": the name of the tool to use (string, or null if refusing/not found)
             "arguments": the arguments for the tool (object)
+            "message": A brief explanation of your decision (especially if generating IDs or refusing)
             
-            If no tool is appropriate, respond with a JSON object where "tool_name" is null.
+            If no tool is appropriate or if you are refusing for safety reasons, "tool_name" must be null.
             """
             
             # Use Gemini to decide what tool to call
@@ -83,12 +122,17 @@ async def run_agent():
                 decision = json.loads(response.text)
                 target_tool = decision.get("tool_name")
                 payload = decision.get("arguments", {})
+                explanation = decision.get("message", "")
             except Exception as e:
                 print(f"❌ Failed to parse LLM response: {response.text}")
                 return
+            
+            if explanation:
+                print(f"🤖 AI Reasoning: {explanation}")
                 
             if not target_tool:
-                print("ℹ️ Gemini decided no tool was appropriate for this request.")
+                if not explanation:
+                    print("ℹ️ Gemini decided no tool was appropriate for this request.")
                 return
             
             print(f"\n🚀 Executing '{target_tool}' with payload: {payload}")
