@@ -21,9 +21,12 @@ SERVER_URL = "http://localhost:8080/sse"
 async def run_agent():
     print(f"🔗 Connecting to MCP 2.0 Server at {SERVER_URL}...")
     
-    # 1. Establish the persistent SSE connection (similar to your WebSockets pattern)
+    # 1. Establish the "Two-Pipe" connection:
+    # streams[0] = Read stream (persistent SSE connection for receiving JSON-RPC messages).
+    # streams[1] = Write stream (HTTP POST client for sending messages).
     async with sse_client(SERVER_URL) as streams:
-        # 2. Initialize the bidirectional JSON-RPC session
+        # 2. ClientSession multiplexes these streams to act like a single bidirectional connection.
+        # Calling tools sends a POST via streams[1] and waits for the response on streams[0].
         async with ClientSession(streams[0], streams[1]) as session:
             await session.initialize()
             
@@ -71,6 +74,10 @@ async def run_agent():
                     response_mime_type="application/json",
                 ),
             )
+            
+            if not response or not response.text:
+                print("❌ Received empty response from Gemini.")
+                return
             
             try:
                 decision = json.loads(response.text)
