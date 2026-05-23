@@ -6,5 +6,8 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastmcp>=3.3.1",
+    "google-genai>=2.6.0",
+    "mcp>=1.27.1",
     "pydantic>=2.13.4",
+    "python-dotenv>=1.2.2",
 ]
