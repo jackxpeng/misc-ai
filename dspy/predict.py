@@ -1,37 +1,53 @@
 import os
 import dspy
+import argparse
 from dotenv import load_dotenv, find_dotenv
 
 load_dotenv(find_dotenv())
 
-# 1. Configure your execution engine (the LM)
-lm = dspy.LM("gemini/gemini-2.5-flash", api_key=os.environ.get("GEMINI_API_KEY"))
-dspy.configure(lm=lm)
+def main():
+    parser = argparse.ArgumentParser(description="Extract information from text using DSPy.")
+    parser.add_argument(
+        "--cot", 
+        action="store_true", 
+        help="Use Chain of Thought reasoning instead of a simple prediction."
+    )
+    args = parser.parse_args()
 
-# 2. Define the Interface (The Signature)
-# We declare exactly what goes in and what must come out, with strong typing.
-class ExtractInfo(dspy.Signature):
-    """Extract structured information from text."""
-    
-    text: str = dspy.InputField()
-    
-    title: str = dspy.OutputField()
-    headings: list[str] = dspy.OutputField()
-    entities: list[dict[str, str]] = dspy.OutputField(desc="a list of entities and their metadata")
+    # 1. Configure your execution engine (the LM)
+    lm = dspy.LM("gemini/gemini-2.5-flash", api_key=os.environ.get("GEMINI_API_KEY"))
+    dspy.configure(lm=lm)
 
-# 3. Assign an Execution Strategy (The Module)
-# dspy.Predict simply executes the signature directly. 
-# If we wanted step-by-step reasoning, we could swap this out for dspy.ChainOfThought(ExtractInfo) 
-# without changing the signature at all.
-extractor = dspy.Predict(ExtractInfo)
+    # 2. Define the Interface (The Signature)
+    class ExtractInfo(dspy.Signature):
+        """Extract structured information from text."""
+        
+        text: str = dspy.InputField()
+        
+        title: str = dspy.OutputField()
+        headings: list[str] = dspy.OutputField()
+        entities: list[dict[str, str]] = dspy.OutputField(desc="a list of entities and their metadata")
 
-# 4. Execute
-payload = """
-Apple Inc. announced its latest iPhone 14 today. 
-The CEO, Tim Cook, highlighted its new features in a press release.
-"""
+    # 3. Assign an Execution Strategy (The Module)
+    if args.cot:
+        print("Running with Chain of Thought reasoning...\n")
+        extractor = dspy.ChainOfThought(ExtractInfo)
+    else:
+        print("Running with simple prediction...\n")
+        extractor = dspy.Predict(ExtractInfo)
 
-response = extractor(text=payload)
+    # 4. Execute
+    payload = """
+    Apple Inc. announced its latest iPhone 14 today. 
+    The CEO, Tim Cook, highlighted its new features in a press release.
+    """
 
-print("Title:", response.title)
-print("Entities:", response.entities)
+    response = extractor(text=payload)
+
+    print("Title:", response.title)
+    if args.cot:
+        print("Reasoning:", response.reasoning)
+    print("Entities:", response.entities)
+
+if __name__ == "__main__":
+    main()
